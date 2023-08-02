@@ -1,0 +1,17 @@
+type Task = record {
+  id : text;
+  status : bool;
+  title : text;
+  body : text;
+  createdAt : nat64;
+};
+type TaskPayload = record { status : bool; title : text; body : text };
+type _AzleResult = variant { Ok : Task; Err : text };
+type _AzleResult_1 = variant { Ok : vec Task; Err : text };
+service : () -> {
+  addTask : (TaskPayload) -> (_AzleResult);
+  deleteTask : (text) -> (_AzleResult);
+  getTask : (text) -> (_AzleResult) query;
+  getTasks : () -> (_AzleResult_1) query;
+  updateMessage : (text, TaskPayload) -> (_AzleResult);
+}
