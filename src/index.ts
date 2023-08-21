@@ -1,5 +1,12 @@
-import { $query, $update, Record, StableBTreeMap, Vec, match, Result, nat64, ic, Opt } from 'azle';
+import { $query, $update, Record, Vec, nat64, ic, Opt } from 'azle';
 import { v4 as uuidv4 } from 'uuid';
+
+// This is a global variable that is stored on the heap
+type Db = {
+    messages: {
+        [id: string]: Message;
+    };
+};
 
 type Message = Record<{
     id: string;
@@ -16,46 +23,30 @@ type MessagePayload = Record<{
     attachmentURL: string;
 }>
 
-const messageStorage = new StableBTreeMap<string, Message>(0, 44, 1024);
+let db: Db = {
+    messages: {},
+};
 
-$query
-export function getMessages(): Result<Vec<Message>, string> {
-    return Result.Ok(messageStorage.values());
+
+// Query calls complete quickly because they do not go through consensus
+$query;
+export function getMessage(id: string): Opt<Message> {
+    const value = db.messages[id];
+    return value !== undefined ? Opt.Some(value) : Opt.None;
 }
 
-$query 
-export function getMessage(id: string): Result<Message, string> {
-    return match(messageStorage.get(id), {
-        Some: (message) => Result.Ok<Message, string>(message),
-        None: () => Result.Err<Message, string>(`a message with id=${id} not found`)
-    });
+$query;
+export function getMessages(): Vec<Message> {
+    return Object.values(db.messages);
 }
 
-$update
-export function addMessage(payload: MessagePayload): Result<Message, string> {
+// Update calls take a few seconds to complete
+// This is because they persist state changes and go through consensus
+$update;
+export async function addMessage(payload: MessagePayload): Promise<string> {
     const message: Message = { id: uuidv4(), createdAt: ic.time(), updatedAt: Opt.None, ...payload }
-    messageStorage.insert(message.id, message);
-    return Result.Ok(message);
-}
-
-$update
-export function updateMessage(id: string, payload: MessagePayload): Result<Message, string> {
-    return match(messageStorage.get(id), {
-        Some: (message) => {
-            const updatedMessage: Message = {...message, ...payload, updatedAt: Opt.Some(ic.time())}
-            messageStorage.insert(message.id, updatedMessage);
-            return Result.Ok<Message, string>(updatedMessage);
-        },
-        None: () => Result.Err<Message, string>(`couldn't update a message with id=${id}. message no`)
-    });
-}
-
-$update
-export function deleteMessage(id: string): Result<Message, string> {
-    return match(messageStorage.remove(id), {
-        Some: (deletedMessage) => Result.Ok<Message, string>(deletedMessage),
-        None: () => Result.Err<Message, string>(`couldn't delete a message with id=${id}. message not found`)
-    });
+    db.messages[message.id] = message;
+    return message.id;
 }
 
 
